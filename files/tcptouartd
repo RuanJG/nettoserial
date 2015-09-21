@@ -1,14 +1,32 @@
-#!/bin/sh /etc/rc.common
-# Copyright (C) 2006-2011 OpenWrt.org
+#!/bin/sh 
 
-START=99
-USE_PROCD=1
 
-start_service() {
+### BEGIN INIT INFO
+# Provides:          tcptouartd
+# Required-Start:    $all
+# Required-Stop:     
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start or stop the tcptouartd.
+### END INIT INFO
+
+my_start_service() {
 	/bin/tcptouart.sh &
 }
-stop_service() {
+my_stop_service() {
         echo "stop tcptouart server"
         killall tcptouart.sh tcptouart
 }
+
+case "$1" in
+start)
+	my_start_service
+	;;
+
+stop)
+	my_stop_service
+	;;
+esac
+
+exit 0
 

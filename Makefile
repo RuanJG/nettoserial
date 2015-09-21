@@ -14,5 +14,8 @@ install:
 	sudo cp ./tcptouart /bin/tcptouart
 	sudo chmod 0777 /bin/tcptouart
 	sudo chmod 0777 /bin/tcptouart.sh
+	sudo update-rc.d tcptouartd defaults
+uninstall:
+	sudo update-rc.d -f tcptouartd remove
 clean:
 	rm *.o tcptouart
