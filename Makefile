@@ -7,5 +7,12 @@ tcptouart: main.o
 	$(CC) $(LDFLAGS) main.o -o tcptouart -lpthread
 main.o: main.c
 	$(CC) $(CFLAGS) -c main.c -I mavlink/include/mavlink/v1.0
+
+install:
+	sudo cp ./files/tcptouartd /etc/init.d/
+	sudo cp ./files/tcptouart.sh /bin/tcptouart.sh
+	sudo cp ./tcptouart /bin/tcptouart
+	sudo chmod 0777 /bin/tcptouart
+	sudo chmod 0777 /bin/tcptouart.sh
 clean:
 	rm *.o tcptouart
