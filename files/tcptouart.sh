@@ -1,9 +1,10 @@
 #!/bin/sh
 uart_name='/dev/ttyUSB0'
-
+#interface
+net=wlan0
 while [ 0 ]
 do
-	ip=$(ifconfig wwan0  | grep 'inet addr')
+	ip=$(ifconfig $net  | grep 'inet addr')
 	ip=${ip#*'inet addr:'}
 	ip=${ip%' Bcast:'*}
 	if [ "$ip"'x' = 'x' ];then
