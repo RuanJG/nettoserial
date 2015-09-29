@@ -38,6 +38,9 @@
 #define TCPTOUART_SOCKET_CHAN_ID MAVLINK_COMM_1
 #define TCPTOUART_UART_CHAN_ID MAVLINK_COMM_0
 
+#define USE_LOST_TIME_CHECK 1
+#define SOCKET_LOST_MAX_TIME 5000 //5s
+
 typedef struct __g_data_t{
 	//server sock
 	int sockfd;
@@ -55,6 +58,7 @@ typedef struct __g_data_t{
 	pthread_t rc_thread_id;
 	char thread_status;//b0=1/0 read on/off b1 = 1/0 write on/off
 	pthread_mutex_t mutex;
+	int lost_data_time ; //check the time > SOCKET_LOST_MAX_TIME, disconnect current client;
 }g_data_t;
 
 typedef struct __g_uart_t{
@@ -506,6 +510,7 @@ void do_initdata(){
 	g_data.write_thread_id = 0;
 	g_data.rc_thread_id = 0;
 
+
 	portnumber = PORTNUM;
 	sprintf(ip_addr,"%s",IPADDR);
 
@@ -765,11 +770,12 @@ void* write_flight_mavlink_thread_worker(void *args)
 	int len,i,ret,res;
 	char buf[1024];
 	mavlink_message_t message;
+	int timeout = 50;//ms
 	
 	set_thread_status(WRITE_THREAD_ID,1);
 	while(!g_data.need_read_thread_quit){
 		//bzero(buf,1024);
-		ret = is_fd_ready(g_data.client_sockfd,50);
+		ret = is_fd_ready(g_data.client_sockfd,timeout);
 		if( ret < 0 ){
 			//select fd error;
 			debugMsg("Select socket fd error, exit ??\n");
@@ -777,8 +783,16 @@ void* write_flight_mavlink_thread_worker(void *args)
 		}else if (ret == 0){
 			//no fd ready
 			//debugMsg("Select socket fd no data\n");
+			#if USE_LOST_TIME_CHECK
+			g_data.lost_data_time+=timeout;
+			if( g_data.lost_data_time > SOCKET_LOST_MAX_TIME)
+				break;
+			#endif
 			continue;
 		}
+		#if USE_LOST_TIME_CHECK
+		g_data.lost_data_time=0;
+		#endif
 
 		len = do_read(g_data.client_sockfd ,buf, 1024);
 		if( len < 0 ){
@@ -880,11 +894,12 @@ void* write_flight_thread_worker(void *args)
 {
 	int len,i,ret;
 	char buf[1024];
+	int timeout = 50;
 	
 	set_thread_status(WRITE_THREAD_ID,1);
 	while(!g_data.need_read_thread_quit){
 		//bzero(buf,1024);
-		ret = is_fd_ready(g_data.client_sockfd,50);
+		ret = is_fd_ready(g_data.client_sockfd,timeout);
 		if( ret < 0 ){
 			//select fd error;
 			debugMsg("Select socket fd error, exit ??\n");
@@ -892,8 +907,16 @@ void* write_flight_thread_worker(void *args)
 		}else if (ret == 0){
 			//no fd ready
 			//debugMsg("Select socket fd no data\n");
+			#if USE_LOST_TIME_CHECK
+			g_data.lost_data_time+=timeout;
+			if( g_data.lost_data_time > SOCKET_LOST_MAX_TIME)
+				break;
+			#endif
 			continue;
 		}
+		#if USE_LOST_TIME_CHECK
+		g_data.lost_data_time=0;
+		#endif
 
 		len = do_read(g_data.client_sockfd ,buf, 1024);
 		if( len < 0 ){
