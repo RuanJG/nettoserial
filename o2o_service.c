@@ -12,7 +12,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
  
-int o2o_debug = 1;
+int o2o_debug = 0;
 #define log(format, ...) if(o2o_debug==1) printf(format, ## __VA_ARGS__)
 #define msleep(x) usleep(x*1000) 
 
