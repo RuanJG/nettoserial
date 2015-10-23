@@ -15,6 +15,8 @@
 
 #include <common/mavlink.h>
 
+#include "o2o_service.h"
+
 
 #define PORTNUM 6666
 //#define IPADDR "192.168.2.1"
@@ -60,6 +62,8 @@ typedef struct __g_data_t{
 	pthread_mutex_t mutex;
 	int lost_data_time ; //check the time > SOCKET_LOST_MAX_TIME, disconnect current client;
 }g_data_t;
+
+pthread_t o2o_service_thread_id ;
 
 typedef struct __g_uart_t{
 	char name[32];
@@ -583,6 +587,10 @@ void quit_handler( int sig )
 
 	do_close_uart();
 
+	call_o2o_service_quit();
+	//if( o2o_service_thread_id > 0 )
+	//	pthread_join(o2o_service_thread_id,NULL);
+
 	// end program here
 	printf("Ruan: exit by ctrl-c\n");
 	exit(0);
@@ -603,10 +611,13 @@ int is_thread_running(int thread_id)
 void set_thread_status(int thread_id,int val)
 {
 	pthread_mutex_lock(&g_data.mutex);
-	if( val == 1)
+	if( val == 1){
 		g_data.thread_status |= thread_id;
-	else 
+		call_update_o2o_online_status(2);
+	}else{
+		call_update_o2o_online_status(1);
 		g_data.thread_status &= ~thread_id;
+	}
 	pthread_mutex_unlock(&g_data.mutex);
 }
 int is_fd_ready(int fd,int timeout_ms)
@@ -1032,6 +1043,11 @@ thread_err:
 	return -1;
 }
 
+void do_start_o2o_service()
+{
+	int res;
+	res= pthread_create( &o2o_service_thread_id, NULL, &o2o_service_main, NULL);
+}
 int do_creat_service_socket()
 {
         /* 服务器端开始建立socket描述符 */
@@ -1090,6 +1106,9 @@ int main(int argc, char *argv[])
 		debug = atoi(argv[5]);
 	}
         debugMsg("TcpToUart  serial = %s %d\n",g_uart.name,g_uart.baudrate);
+
+
+	do_start_o2o_service();
 
 
 	if( 0 > do_open_uart() ){

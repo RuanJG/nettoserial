@@ -3,8 +3,9 @@ ARCH=arm
 CROSS_COMPILE=
 CC=$(CROSS_COMPILE)gcc
 
-tcptouart: main.o
-	$(CC) $(LDFLAGS) main.o -o tcptouart -lpthread
+objs:=main.o o2o_service.o
+tcptouart: $(objs)
+	$(CC) $(LDFLAGS) $(objs) -o tcptouart -lpthread
 main.o: main.c
 	$(CC) $(CFLAGS) -c main.c -I mavlink/include/mavlink/v1.0
 
