@@ -12,8 +12,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
  
-int o2o_debug = 0;
-#define log(format, ...) if(o2o_debug==1) printf(format, ## __VA_ARGS__)
+extern int debug;
+int o2o_debug = 1;
+#define log(format, ...) if(debug==1 && o2o_debug==1) printf(format, ## __VA_ARGS__)
 #define msleep(x) usleep(x*1000) 
 
 #define O2OIP "61.143.38.63"
@@ -348,7 +349,7 @@ int get_olt()
 	memset(o2o_g_data.olt,0,O2O_OLT_MSG_STRING_LEN);
 	time(&timep);
 	p=localtime(&timep);
-	sprintf(o2o_g_data.olt,"%d-%2d-%2d%s%2d:%2d:%2d",1900+p->tm_year , 1+p->tm_mon, p->tm_mday,"%20", p->tm_hour, p->tm_min, p->tm_sec );
+	sprintf(o2o_g_data.olt,"%d-%02d-%02d%s%02d:%02d:%02d",1900+p->tm_year , 1+p->tm_mon, p->tm_mday,"%20", p->tm_hour, p->tm_min, p->tm_sec );
 }
 void reflash_update_time()
 {
