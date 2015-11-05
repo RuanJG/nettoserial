@@ -12,6 +12,7 @@ tcptouart: $(srcs)
 install:
 	sudo cp ./files/tcptouartd /etc/init.d/
 	sudo cp ./files/tcptouart.sh /bin/tcptouart.sh
+	sudo cp ./files/htpdate.sh /bin/htpdate.sh
 	sudo cp ./tcptouart /bin/tcptouart
 	sudo cp ./files/htpdate /bin/htpdate
 	sudo chmod 0777 /bin/tcptouart

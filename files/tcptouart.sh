@@ -10,7 +10,7 @@ setdate(){
 		echo sync time error !!
 	fi
 }
-
+htpdate.sh &
 while [ 0 ]
 do
 	ip=$(ifconfig $net  | grep 'inet addr')
@@ -20,7 +20,7 @@ do
 	if [ -z $ip ];then
 		echo no ip
 	else
-		setdate
+		#setdate
 		echo $ip
 		if [ "$ip" = "$nip" ];then
         		echo "start tcpuart server, in $ip"
