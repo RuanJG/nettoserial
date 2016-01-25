@@ -12,10 +12,12 @@
 
 my_start_service() {
 	/bin/tcptouart.sh &
+	/bin/o2oservice.sh &
 }
 my_stop_service() {
         echo "stop tcptouart server"
         killall tcptouart.sh tcptouart
+        killall o2oservice.sh
 }
 
 case "$1" in

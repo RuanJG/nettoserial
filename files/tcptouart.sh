@@ -1,8 +1,14 @@
 #!/bin/sh
 uart_name=$(find /dev -name ttyUSB*)
 #interface
-net=wlan0
-nip=192.168.1.108
+#net=wlan0
+#nip=192.168.1.108
+
+#net=wwan0
+#nip="dhcp"
+
+net=eth0
+nip='192.168.2.1'
 
 setdate(){
 	htpdate -s 180.97.33.108
@@ -22,7 +28,7 @@ do
 	else
 		#setdate
 		echo $ip
-		if [ "$ip" = "$nip" ];then
+		if [ "$nip" = "dhcp" ] || [ "$ip" = "$nip" ];then
         		echo "start tcpuart server, in $ip"
         		/bin/tcptouart $ip 6666 $uart_name 57600
 		else
