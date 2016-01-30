@@ -1108,7 +1108,7 @@ int main(int argc, char *argv[])
         debugMsg("TcpToUart  serial = %s %d\n",g_uart.name,g_uart.baudrate);
 
 
-	//do_start_o2o_service();
+	do_start_o2o_service();
 
 
 	if( 0 > do_open_uart() ){
