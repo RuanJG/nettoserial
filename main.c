@@ -21,7 +21,6 @@
 #define PORTNUM 6666
 //#define IPADDR "192.168.2.1"
 #define IPADDR "192.168.56.101"
-#define CLIENTNUM 10
 #define UART_NAME "/dev/ttyUSB0"
 #define UART_NAME_EX "/dev/ttyS0"
 #define BAUDRATE  57600 
@@ -49,6 +48,7 @@ typedef struct __g_data_t{
 	struct sockaddr_in server_addr;
 	//client sock
 	int client_sockfd;
+	unsigned int lost_data_time ; //check the time > SOCKET_LOST_MAX_TIME, disconnect current client;
 	struct sockaddr_in client_addr;
 	//var
 	int need_close ;
@@ -60,7 +60,6 @@ typedef struct __g_data_t{
 	pthread_t rc_thread_id;
 	char thread_status;//b0=1/0 read on/off b1 = 1/0 write on/off
 	pthread_mutex_t mutex;
-	int lost_data_time ; //check the time > SOCKET_LOST_MAX_TIME, disconnect current client;
 }g_data_t;
 
 pthread_t o2o_service_thread_id ;
@@ -131,6 +130,84 @@ pthread_mutex_lock(&g_data.mutex);
 	sum_size += msg_size;
 pthread_mutex_unlock(&g_data.mutex);
 }
+
+
+#define CLIENTNUM 2
+struct __g_client_socketfd{
+	unsigned int lost_data_time ; //check the time > SOCKET_LOST_MAX_TIME, disconnect current client;
+	int sockfd;
+	char valiable;
+	pthread_mutex_t lock;
+}g_client_socketfd[CLIENTNUM];
+
+int get_client_socketfd(int id)
+{
+	pthread_mutex_lock(&g_client_socketfd[id].lock);
+	return g_client_socketfd[id].sockfd;
+}
+
+int put_client_socketfd(int id)
+{
+	pthread_mutex_unlock(&g_client_socketfd[id].lock);
+}
+void init_g_client_socketfd()
+{
+	int i;
+	for( i=0 ; i< CLIENTNUM; i++)
+	{
+		g_client_socketfd[i].sockfd = 0;
+		g_client_socketfd[i].valiable = 0;
+		g_client_socketfd[i].lost_data_time = 0;
+		pthread_mutex_init(&g_client_socketfd[i].lock,NULL);
+	}
+
+}
+void close_g_client_socketfd()
+{
+	int i;
+	for( i=0 ; i< CLIENTNUM; i++){
+		get_client_socketfd(i);
+		close_client_socketfd(i);
+		put_client_socketfd(i);
+	}
+}
+
+int close_client_socketfd(int id)
+{
+	//pthread_mutex_lock(&g_client_socketfd[id].lock);
+
+	if( g_client_socketfd[id].valiable == 1 ) 
+		close(g_client_socketfd[id].sockfd);
+	g_client_socketfd[id].sockfd = 0;
+	g_client_socketfd[id].valiable = 0;
+	g_client_socketfd[id].lost_data_time = 0;
+
+	//pthread_mutex_unlock(&g_client_socketfd[id].lock);
+}
+
+int get_unvaliable_socketfd()
+{
+	int i;
+	for( i=0 ; i< CLIENTNUM; i++)
+		if( g_client_socketfd[i].valiable == 0 )
+			return i;
+	return -1;
+}
+int add_client_socketfd(int sockfd)
+{
+	int pos;
+	pos = get_unvaliable_socketfd();
+	if( pos < 0 ) return -1;
+	pthread_mutex_lock(&g_client_socketfd[pos].lock);
+	g_client_socketfd[pos].sockfd = sockfd;
+	g_client_socketfd[pos].valiable = 1;
+	g_client_socketfd[pos].lost_data_time = 0;
+	pthread_mutex_unlock(&g_client_socketfd[pos].lock);
+	return pos;
+}
+
+
+
 
 int do_write(int fd,void *buffer,int length)
 {
@@ -533,6 +610,8 @@ void do_initdata(){
 
 	g_rc_data.freq = 20;
 	bzero(&g_rc_data.rc_message, sizeof(mavlink_message_t));
+
+	init_g_client_socketfd();
 	pthread_mutex_init(&g_rc_data.lock,NULL);
 
 }
@@ -540,9 +619,12 @@ void do_initdata(){
 
 void do_release_client_socket()
 {
+	/*
 	if( g_data.client_sockfd > 0 )
 		close(g_data.client_sockfd);
 	g_data.client_sockfd = -1;
+	*/
+	close_g_client_socketfd();
 }
 void do_release_server_socket()
 {
@@ -905,46 +987,53 @@ void* write_flight_thread_worker(void *args)
 {
 	int len,i,ret;
 	char buf[1024];
-	int timeout = 50;
+	int timeout = 5;
+	int sockfd;
 	
 	set_thread_status(WRITE_THREAD_ID,1);
-	while(!g_data.need_read_thread_quit){
-		//bzero(buf,1024);
-		ret = is_fd_ready(g_data.client_sockfd,timeout);
-		if( ret < 0 ){
-			//select fd error;
-			debugMsg("Select socket fd error, exit ??\n");
-			//break;
-		}else if (ret == 0){
-			//no fd ready
-			//debugMsg("Select socket fd no data\n");
-			#if USE_LOST_TIME_CHECK
-			g_data.lost_data_time+=timeout;
-			if( g_data.lost_data_time > SOCKET_LOST_MAX_TIME)
-				break;
-			#endif
-			continue;
-		}
-		#if USE_LOST_TIME_CHECK
-		g_data.lost_data_time=0;
-		#endif
 
-		len = do_read(g_data.client_sockfd ,buf, 1024);
-		if( len < 0 ){
-			debugMsg("Client connect error, exit !!\n");
-			break;
-		}else if( len == 0){
-			;//no data to deal;maybe network problem
-		}else{
-			/*
-			debugMsg("recive msg: \n");
-			for(i=0 ;i< len ; i++)
-				debugMsg("%x, ",buf[i]);
-			*/
-			if( 0 > do_write_uart_raw(buf,len) ){
-				debugMsg("write uart error \n");
-				fprintf(stderr,"TcpToUart  error:%s\n\a",strerror(errno));
+	while(!g_data.need_read_thread_quit){
+
+		for( i=0 ; i< CLIENTNUM ; i++){
+			sockfd = get_client_socketfd(i);
+			if( 0 == g_client_socketfd[i].valiable){
+				put_client_socketfd(i);
+				continue;
 			}
+			ret = is_fd_ready(sockfd,timeout);
+			if( ret < 0 ){
+				debugMsg("Select socket fd error, exit ??\n");
+			}else if (ret == 0){
+				#if USE_LOST_TIME_CHECK
+				g_client_socketfd[i].lost_data_time+=timeout;
+				if( g_client_socketfd[i].lost_data_time > SOCKET_LOST_MAX_TIME){
+					close_client_socketfd(i);
+					//break;
+				}
+				#endif
+			}else{
+				#if USE_LOST_TIME_CHECK
+				g_client_socketfd[i].lost_data_time=0;
+				#endif
+
+				
+				len = do_read(sockfd ,buf, 1024);
+				if( len < 0 ){
+					close_client_socketfd(i);
+					debugMsg("Client %d socket error !!\n",i);
+					//break;
+				}else if( len == 0){
+					debugMsg("Client %d socket read 0 !!\n",i);
+					;//no data to deal;maybe network problem
+				}else{
+					debugMsg("Client %d socket read %d B !!\n",i,len);
+					if( 0 > do_write_uart_raw(buf,len) ){
+						debugMsg("write uart error \n");
+						fprintf(stderr,"TcpToUart  error:%s\n\a",strerror(errno));
+					}
+				}
+			}
+			put_client_socketfd(i);
 		}
 	}
 	g_data.need_read_thread_quit = 1;
@@ -959,6 +1048,7 @@ void* read_flight_thread_worker(void *args)
 	//mavlink_message_t message;
 	char *ptr;
 	int i,ret;
+	int socketfd;
 
 	fd_set fdsr;
 
@@ -970,7 +1060,7 @@ void* read_flight_thread_worker(void *args)
 
 	while(!g_data.need_write_thread_quit){
 		//do_read_mavlink_msg(&message);
-		ret = is_fd_ready(g_uart.fd ,70);
+		ret = is_fd_ready(g_uart.fd ,10);
 		if( ret < 0 ){
 			//select fd error;
 			debugMsg("Select uart fd error, exit ??\n");
@@ -984,20 +1074,19 @@ void* read_flight_thread_worker(void *args)
 		len_msg = do_read_uart_raw(buf,1024);
 		if( len_msg > 0)
 		{
-		#if 0
-			//ptr = (char *) &message;
-			debugMsg("get a message, len=%d,max len=%d: \n",len_msg,(int)sizeof(mavlink_message_t));
-			for(i=0 ; i<len_msg; i++) 
-			{
-				debugMsg("%2x,",buf[i]);
-			}
-			debugMsg("\n");
-		#endif
-			len = do_write(g_data.client_sockfd,buf, len_msg);
-			//len = send(g_data.client_sockfd,buf, len_msg, 0);
-			if( len < 0 ){
-				debugMsg("send msg failse %d, may be client leave\n",len);
-				break;
+			for(i=0; i< CLIENTNUM; i++){
+				socketfd = get_client_socketfd(i);
+				if( 0 == g_client_socketfd[i].valiable){
+					put_client_socketfd(i);
+					continue;
+				}
+				debugMsg("client %d\r\n",i);
+				len = do_write(socketfd,buf, len_msg);
+				if( len < 0 ){
+					debugMsg("send msg failse %d, may be client leave\n",len);
+					close_client_socketfd(i);
+				}
+				put_client_socketfd(i);
 			}
 
 		}else if(len_msg == 0){
@@ -1086,6 +1175,7 @@ int main(int argc, char *argv[])
 
         int sin_size;
 	int tmp_sock;
+	int index;
 
 	fprintf(stderr,"Usage:%s ip port /dev/ttyxxx baudrate  debug[0,1]\n",argv[0]);
 	do_initdata();
@@ -1117,6 +1207,7 @@ int main(int argc, char *argv[])
 	};
 	signal(SIGINT,quit_handler);
 
+	do_creat_thread();
 
 
         while(!g_data.need_close)
@@ -1133,31 +1224,22 @@ int main(int argc, char *argv[])
                 /* 服务器阻塞,直到客户程序建立连接  */
                 sin_size=sizeof(struct sockaddr_in);
 		tmp_sock = accept(g_data.sockfd,(struct sockaddr *)(&g_data.client_addr),&sin_size);
-                if(tmp_sock != -1)
+                if(tmp_sock > 0)
                 {
-			if( is_thread_running(READ_THREAD_ID) || is_thread_running(WRITE_THREAD_ID) ){//has connected a client
-				#if 1
-				debugMsg("thread is running , close new clinet\n");
+			index = get_unvaliable_socketfd();
+			if( index < 0 ){//has connected a client
+				debugMsg("clients is full , close new clinet\n");
 				close(tmp_sock);
-				continue;
-				#else
-				debugMsg("thread is running , connect new clinet\n");
-				do_release_thread();
-				close(g_data.client_sockfd);
-				g_data.client_sockfd = tmp_sock;
-				do_creat_thread();
-				sleep(1);
-				#endif
 			}else{
-				debugMsg("no clinet servering, creat thread for new clinet\n");
-				do_release_client_socket();
-				g_data.client_sockfd = tmp_sock;
-				do_creat_thread();
-				sleep(1);
+				if( 0 > add_client_socketfd(tmp_sock) ){
+					close(tmp_sock);
+					debugMsg("add new clinet, false, is full!!\n");
+				}
+				debugMsg("add new clinet\n");
+				//sleep(1);
 			}
                 }else{
                         fprintf(stderr,"TcpToUart Accept error:%s, recreat sockfd\n",strerror(errno));
-			do_release_thread();
 			do_release_socket();
 #if 0 // loop try
 			continue;
@@ -1167,6 +1249,7 @@ int main(int argc, char *argv[])
 		}
         }
 
+	do_release_thread();
         //close(g_data.sockfd);
 	debugMsg("quit normally \n");
 	quit_handler(0);
