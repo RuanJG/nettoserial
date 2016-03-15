@@ -1,5 +1,5 @@
 #!/bin/sh 
-net='wlan0'
+net='wwan0'
 date=''
 time=''
 copter_name='4g_copter'
@@ -13,7 +13,7 @@ do
 		echo can not find ip in br-lan
 		ip='0.0.0.0'
 	else
-        	echo "start o2oserver, in $ip"
+        	#echo "start o2oserver, in $ip"
 		date=$(date -d today +"%Y-%m-%d")
 		time=$(date -d today +"%H:%M:%S")
 		curl "http://www.o2oc.cn/UAV/RuanJG/123?id=$copter_name&ip=$ip&iol=1&mac=10:22:33:44:55:66&olt=$date%20$time"
